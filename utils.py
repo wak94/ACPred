@@ -3,6 +3,7 @@
 @author: wak
 @date: 2024/2/3 22:16 
 """
+import numpy as np
 import torch
 import matplotlib.pyplot as plt
 from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score
