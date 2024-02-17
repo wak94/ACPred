@@ -27,6 +27,21 @@ def ROC(fpr, tpr, AUC, path, name):
     plt.savefig(path)
 
 
+def PRC(recall, precision, AP, path, name):
+    path = os.path.join(os.path.dirname(cur_path), 'result', path, name + '.png')
+    plt.figure(figsize=(10, 5))
+    plt.subplot(1, 2, 1)
+    plt.plot(recall, precision, color='darkorange', lw=2, label='ROC curve (area = %0.2f)' % AP)
+    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('Recall')
+    plt.ylabel('Precision')
+    plt.title('Precision-Recall Curve')
+    plt.legend(loc="lower right")
+    plt.savefig(path)
+
+
 def caculate_metric(pred_y, labels, pred_prob):
     test_num = len(labels)
     tp = 0
