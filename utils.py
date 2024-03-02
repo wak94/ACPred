@@ -4,12 +4,16 @@
 @date: 2024/2/3 22:16 
 """
 import numpy as np
+import pandas as pd
 import torch
 import matplotlib.pyplot as plt
 from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score
 import os.path
+import configration.config as cf
 
 cur_path = os.path.abspath(__file__)
+devicenum = cf.get_config().devicenum
+device = torch.device('cuda', devicenum)
 
 
 def ROC(fpr, tpr, AUC, path, name):
@@ -42,7 +46,7 @@ def PRC(recall, precision, AP, path, name):
     plt.savefig(path)
 
 
-def caculate_metric(pred_y, labels, pred_prob):
+def calculate_metric(pred_y, labels, pred_prob):
     test_num = len(labels)
     tp = 0
     fp = 0
@@ -110,3 +114,45 @@ def caculate_metric(pred_y, labels, pred_prob):
     roc_data = [fpr, tpr, AUC]
     prc_data = [recall, precision, AP]
     return metric, roc_data, prc_data
+
+
+def evaluate_accuracy(data_iter, net):
+    acc_sum, n = 0.0, 0
+    for data, label in data_iter:
+        data, label = data.to(device), label.to(device)
+        outputs = net(data)
+
+        acc_sum += (outputs.argmax(dim=1) == label).float().sum().item()
+        n += label.shape[0]
+    return acc_sum / n
+
+
+def get_prediction(data_iter, net):
+    y_pred, y_true = [], []
+    outputs = []
+    for x, y in data_iter:
+        x, y = x.to(device), y.to(device)
+        output = net(x)
+        outputs.append(output)
+        y_pred.append(output.argmax(dim=1).cpu().numpy())
+        y_true.append(y.cpu().numpy())
+    y_pred, y_true = np.array(y_pred), np.array(y_pred)
+    y_pred = y_pred.reshape(-1, 1)
+    y_true = y_true.reshape(-1, 1)
+
+    df1 = pd.DataFrame(y_pred, columns=['y_pred'])
+    df2 = pd.DataFrame(y_true, columns=['y_true'])
+    df4 = pd.concat([df1, df2], axis=1)
+
+    outputs = torch.cat(outputs, dim=0)
+    pred_prob = outputs[:, 1]
+    pred_prob = np.array(pred_prob.cpu().detach().numpy())
+    pred_prob = pred_prob.reshape(-1)
+    df3 = pd.DataFrame(pred_prob, columns=['pred_prob'])
+    df5 = pd.concat([df4, df3], axis=1)
+    y_true1 = df5['y_true']
+    y_pred1 = df5['y_pred']
+    pred_prob1 = df5['pred_prob']
+
+    metrics, roc_data, prc_data = calculate_metric(y_pred1, y_true1, pred_prob1)
+    return metrics, roc_data, prc_data
