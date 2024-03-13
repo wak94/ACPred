@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" remoteFilesAllowedToDisappearOnAutoupload="false">
+  <component name="PublishConfigData" autoUpload="Always" serverName="root@211.81.55.179:8546 key (9)" remoteFilesAllowedToDisappearOnAutoupload="false" confirmBeforeUploading="false">
+    <option name="confirmBeforeUploading" value="false" />
     <serverData>
       <paths name=".213">
         <serverdata>
@@ -65,6 +66,20 @@
           </mappings>
         </serverdata>
       </paths>
+      <paths name="root@211.81.55.179:8546 key (8)">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="root@211.81.55.179:8546 key (9)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/root/disk1/qgking/wak/ACPred" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
       <paths name="root@connect.westa.seetacloud.com:34930 password">
         <serverdata>
           <mappings>
@@ -87,5 +102,6 @@
         </serverdata>
       </paths>
     </serverData>
+    <option name="myAutoUpload" value="ALWAYS" />
   </component>
 </project>

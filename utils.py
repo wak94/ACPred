@@ -106,8 +106,9 @@ def calculate_metric(pred_y, labels, pred_prob):
     # PRC and AP
     precision, recall, thresholds = precision_recall_curve(labels, pred_prob, pos_label=1)
     AP = average_precision_score(labels, pred_prob, average='macro', pos_label=1, sample_weight=None)
-
-    metric = torch.tensor([ACC, Precision, Sensitivity, Specificity, F1, AUC, MCC])
+    metric = [ACC, Precision, Sensitivity, Specificity, F1, AUC, MCC]
+    metric = [round(x, 5) for x in metric]
+    metric = torch.tensor(metric)
 
     # ROC(fpr, tpr, AUC)
     # PRC(recall, precision, AP)
@@ -116,12 +117,14 @@ def calculate_metric(pred_y, labels, pred_prob):
     return metric, roc_data, prc_data
 
 
+def model_output(data, net):
+    return net.trainModel(data['bert'], data['oe'], data['aa'])
+
+
 def evaluate_accuracy(data_iter, net):
     acc_sum, n = 0.0, 0
     for data, label in data_iter:
-        data, label = data.to(device), label.to(device)
-        outputs = net(data)
-
+        outputs = net.trainModel(data)
         acc_sum += (outputs.argmax(dim=1) == label).float().sum().item()
         n += label.shape[0]
     return acc_sum / n
@@ -131,12 +134,11 @@ def get_prediction(data_iter, net):
     y_pred, y_true = [], []
     outputs = []
     for x, y in data_iter:
-        x, y = x.to(device), y.to(device)
-        output = net(x)
+        output = net.trainModel(x)
         outputs.append(output)
         y_pred.append(output.argmax(dim=1).cpu().numpy())
         y_true.append(y.cpu().numpy())
-    y_pred, y_true = np.array(y_pred), np.array(y_pred)
+    y_pred, y_true = np.array(y_pred), np.array(y_true)
     y_pred = y_pred.reshape(-1, 1)
     y_true = y_true.reshape(-1, 1)
 

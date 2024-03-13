@@ -8,7 +8,6 @@ import warnings
 # 取消所有警告
 warnings.filterwarnings("ignore")
 
-
 import time
 
 import numpy as np
@@ -16,34 +15,37 @@ import torch
 from termcolor import colored
 
 import configration.config as cf
-from models.models import NewModel
-from preprocess.get_data import get_dataloader
+from preprocess.get_data import MyDataSet, HybridDataset, read_origin_data, collate1
+from models.models import NewModel, CNN, ContrastiveLoss, MyModel3, MyModel4, BFD, MyModel5
+
 import torch.nn as nn
+from torch.utils.data import DataLoader
 
 from utils import get_prediction, evaluate_accuracy
 
 
-def main(args):
+def main(args, model, name):
     batch_size = args.batch_size
     dataset = args.dataset
     lr = args.lr
-    devicenum = args.devicenum
-    device = torch.device('cuda', devicenum)
-
-    train_dataloader, test_dataloader = get_dataloader('AntiACP2.0_' + dataset, batch_size)
-
-    net = NewModel().to(device)
-    optimizer = torch.optim.Adam(net.parameters(), lr=lr, weight_decay=5e-4)
-    criterion_model = nn.CrossEntropyLoss(reduction='sum').to(device)
+    device = args.device
     epochs = args.epochs
+    train_seq, train_label, test_seq, test_label = read_origin_data(f'AntiACP2.0_{dataset}')
+    train_dataset = MyDataSet(train_seq, train_label)
+    test_dataset = MyDataSet(test_seq, test_label)
+    train_dataloader, test_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
+                                                   drop_last=True), DataLoader(test_dataset, batch_size=batch_size,
+                                                                               shuffle=True, drop_last=True)
+    model = model.to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=5e-4)
+    criterion_model = nn.CrossEntropyLoss(reduction='sum').to(device)
     best_acc = 0.0
     for epoch in range(epochs):
         t0 = time.time()
-        net.train()
+        model.train()
         loss_ls = []
         for data, label in train_dataloader:
-            data, label = data.to(device), label.to(device)
-            output = net(data)
+            output = model.trainModel(data)
             loss = criterion_model(output, label)
 
             optimizer.zero_grad()
@@ -52,10 +54,10 @@ def main(args):
 
             loss_ls.append(loss.item())
 
-        net.eval()
+        model.eval()
         with torch.no_grad():
-            train_acc = evaluate_accuracy(train_dataloader, net)
-            metrics, roc_data, prc_data = get_prediction(test_dataloader, net)
+            train_acc = evaluate_accuracy(train_dataloader, model)
+            metrics, roc_data, prc_data = get_prediction(test_dataloader, model)
             metrics_list = metrics.tolist()
             test_acc = metrics_list[0]
 
@@ -65,11 +67,77 @@ def main(args):
 
         if test_acc > best_acc:
             best_acc = test_acc
-            torch.save({"best_acc": best_acc, "metric": metrics, "model": net.state_dict()},
-                       f'./result/{dataset}/res.pl')
+            torch.save({"best_acc": best_acc, "metric": metrics, "model": model.state_dict()},
+                       f'./result/{dataset}/{name}.pl')
+            print(f"best_acc: {best_acc},metric:{metrics_list}")
+
+
+def main_contrastive(args, model, name):
+    batch_size = args.batch_size
+    dataset = args.dataset
+    lr = args.lr
+    device = args.device
+
+    train_seq, train_label, test_seq, test_label = read_origin_data(f'AntiACP2.0_{dataset}')
+    train_dataset = MyDataSet(train_seq, train_label)
+    test_dataset = MyDataSet(test_seq, test_label)
+    train_dataloader, test_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
+                                                   drop_last=True), DataLoader(test_dataset, batch_size=batch_size,
+                                                                               shuffle=True, drop_last=True)
+    contrastive_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True,
+                                        collate_fn=collate1)
+
+    model = model.to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=5e-4)
+    criterion_model = nn.CrossEntropyLoss().to(device)
+    criterion = ContrastiveLoss().to(device)
+    epochs = args.epochs
+    best_acc = 0.0
+    for epoch in range(epochs):
+        t0 = time.time()
+        model.train()
+        loss_ls = []
+        contrastive_loss_ls = []
+        model_loss_ls = []
+        for data1, data2, label, label1, label2 in contrastive_dataloader:
+            output1 = model(data1)
+            output2 = model(data2)
+            output3 = model.trainModel(data1)
+            output4 = model.trainModel(data2)
+
+            contrastive_loss = criterion(output1, output2, label)
+            model_loss1 = criterion_model(output3, label1)
+            model_loss2 = criterion_model(output4, label2)
+            loss = contrastive_loss + model_loss1 + model_loss2
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            loss_ls.append(loss.item())
+            contrastive_loss_ls.append(contrastive_loss.item())
+            model_loss_ls.append((model_loss1 + model_loss2).item())
+
+        model.eval()
+        with torch.no_grad():
+            train_acc = evaluate_accuracy(train_dataloader, model)
+            metrics, roc_data, prc_data = get_prediction(test_dataloader, model)
+            metrics_list = metrics.tolist()
+            test_acc = metrics_list[0]
+
+        results = f"epoch: {epoch + 1}, loss: {np.mean(loss_ls):.5f}, contrastive_loss: {np.mean(contrastive_loss_ls):.5f}, model_loss: {np.mean(model_loss_ls):.5f}\n"
+        results += f'\ttrain_acc: {train_acc:.4f}, test_acc: {colored(test_acc, "red")}, time: {time.time() - t0:.2f}'
+        print(results)
+
+        if test_acc > best_acc:
+            best_acc = test_acc
+            torch.save({"best_acc": best_acc, "metric": metrics, "model": model.state_dict()},
+                       f'./result/{dataset}/{name}.pl')
             print(f"best_acc: {best_acc},metric:{metrics_list}")
 
 
 if __name__ == '__main__':
     args = cf.get_config()
-    main(args)
+    model = MyModel5()
+    # main_contrastive(args, model, 'basic_CL')
+    main_contrastive(args, model, 'basic_PM_CL')
+    # main(args, model, 'basic_PM')
