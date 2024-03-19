@@ -3,6 +3,7 @@
 @author: wak
 @date: 2024/3/1 15:19 
 """
+import itertools
 import json
 import os
 
@@ -112,6 +113,28 @@ def bert_encoding(seq):
     return torch.tensor(datas, dtype=torch.float32, device=device)
 
 
+def CTriad_map():
+    groups = ['HNQW', 'AGV', 'YMTS', 'ILFP', 'DE', 'RK', 'C']
+    ctf = {}
+    for i, g in enumerate(groups):
+        for x in g:
+            ctf[x] = i
+    return ctf
+
+
+def CTriad_encoding(seq):
+    datas = []
+    ctf = CTriad_map()
+    for s in seq:
+        v = np.zeros(343)
+        for i in range(len(s) - 2):
+            n1, n2, n3 = ctf[s[i]], ctf[s[i + 1]], ctf[s[i + 2]]
+            v[49 * n1 + 7 * n2 + n3] += 1
+        v /= len(s)
+        datas.append(v.tolist())
+    return datas
+
+
 def read_origin_data(dir_name):
     train_path = os.path.join(cur_path, '..', 'dataset', dir_name, 'train.txt')
     test_path = os.path.join(cur_path, '..', 'dataset', dir_name, 'test.txt')
@@ -215,4 +238,6 @@ if __name__ == '__main__':
     # print(X2)
     # print(y2)
     # read_origin_data('AntiACP2.0_Alternate')
-    aaindex_encoding('AA')
+    # aaindex_encoding('AA')
+    a = CTriad_map()
+    print(a)

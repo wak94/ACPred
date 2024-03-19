@@ -16,7 +16,7 @@ from termcolor import colored
 
 import configration.config as cf
 from preprocess.get_data import MyDataSet, HybridDataset, read_origin_data, collate1
-from models.models import NewModel, CNN, ContrastiveLoss, MyModel3, MyModel4, BFD, MyModel5
+from models.models import NewModel, CNN, ContrastiveLoss, MyModel3, MyModel4, BFD, MyModel5, MambaTest, MyModel6
 
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -40,6 +40,7 @@ def main(args, model, name):
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=5e-4)
     criterion_model = nn.CrossEntropyLoss(reduction='sum').to(device)
     best_acc = 0.0
+    best_metrics = []
     for epoch in range(epochs):
         t0 = time.time()
         model.train()
@@ -67,9 +68,11 @@ def main(args, model, name):
 
         if test_acc > best_acc:
             best_acc = test_acc
+            best_metrics = metrics_list
             torch.save({"best_acc": best_acc, "metric": metrics, "model": model.state_dict()},
                        f'./result/{dataset}/{name}.pl')
             print(f"best_acc: {best_acc},metric:{metrics_list}")
+    print(f"best_acc: {best_acc},metric:{best_metrics}")
 
 
 def main_contrastive(args, model, name):
@@ -93,6 +96,7 @@ def main_contrastive(args, model, name):
     criterion = ContrastiveLoss().to(device)
     epochs = args.epochs
     best_acc = 0.0
+    best_metrics = []
     for epoch in range(epochs):
         t0 = time.time()
         model.train()
@@ -130,14 +134,32 @@ def main_contrastive(args, model, name):
 
         if test_acc > best_acc:
             best_acc = test_acc
+            best_metrics = metrics_list
             torch.save({"best_acc": best_acc, "metric": metrics, "model": model.state_dict()},
                        f'./result/{dataset}/{name}.pl')
             print(f"best_acc: {best_acc},metric:{metrics_list}")
+    print(f"best_acc: {best_acc},metric:{best_metrics}")
 
 
 if __name__ == '__main__':
     args = cf.get_config()
-    model = MyModel5()
+
     # main_contrastive(args, model, 'basic_CL')
-    main_contrastive(args, model, 'basic_PM_CL')
+    # for i in range(10):
+    #     model = MyModel5()
+    #     main_contrastive(args, model, f'basic_PM_CL_{i + 1}')
     # main(args, model, 'basic_PM')
+    # for i in range(16):
+    #     print(f'd_model=512, d_state={i + 1}, d_conv=2, expand=8')
+    #     model = MambaTest(d_state=i + 1)
+    #     main(args, model, f'mamba_mlp:expand={i + 1}')
+    #     print('---------------------------------------------------------')
+    # model = MambaTest(d_conv=2)
+    # main(args, model, 'mamba_mlp:d_conv=2')
+    # print('---------------------------------------------------------')
+    # model = MambaTest(d_state=16, d_conv=4, expand=2)
+    # main(args, model, 'mamba_mlp')
+    for i in range(10):
+        print(f'第{i + 1}次')
+        model = MyModel6()
+        main_contrastive(args, model, f'model6:no_PM_{i + 1}')

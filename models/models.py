@@ -5,11 +5,14 @@
 """
 import numpy as np
 import torch
+from mamba_ssm import Mamba
 # from mamba_ssm import Mamba
 from torch import nn
 from torch.nn import functional as F
 
 from configration.config import get_config
+
+device = get_config().device
 
 
 class BaseModel(nn.Module):
@@ -218,7 +221,12 @@ class MyModel5(nn.Module):
             nn.ReLU(),
             nn.MaxPool1d(kernel_size=2, stride=2),  # [bs, 128, 12]
         )
-        self.fc1 = nn.Linear(12 * 128, 1024)
+        self.mamba = Mamba(
+            d_model=512,
+            d_state=16,
+            d_conv=2,
+            expand=2
+        ).to(device)
         self.emb_dim = 512
         self.hidden_dim = 25
         self.emb = nn.Embedding(vocab_size, self.emb_dim, padding_idx=0)
@@ -258,7 +266,7 @@ class MyModel5(nn.Module):
         aa_output = aa_output.view(aa_output.size(0), -1)  # [bs, 1536]
 
         oe_output = self.emb(oe)  # [bs, 50, 512]
-        output = self.transformer_encoder(oe_output).permute(1, 0, 2)  # [50, bs, 512]
+        output = self.mamba(oe_output).permute(1, 0, 2)  # [50, bs, 512]
         output, _ = self.gru(output)  # [50, bs, 50]
         output = output.permute(1, 0, 2)  # [bs, 50, 50]
         output = output.reshape(output.shape[0], -1)  # [bs, 2500]
@@ -398,3 +406,119 @@ class ContrastiveLoss(nn.Module):
                                       label * torch.pow(torch.clamp(self.margin - euclidean_distance, min=0.0), 2))
 
         return loss_contrastive
+
+
+class MyModel6(nn.Module):
+    def __init__(self, vocab_size=21):
+        super(MyModel6, self).__init__()
+        self.convs = nn.Sequential(
+            nn.Conv1d(581, 64, kernel_size=3, stride=1, padding=1),  # [bs, 64, 50]
+            nn.ReLU(),
+            nn.MaxPool1d(kernel_size=2, stride=2),  # [bs, 64, 25]
+            nn.Conv1d(64, 128, kernel_size=3, stride=1, padding=1),  # [bs, 128, 25]
+            nn.ReLU(),
+            nn.MaxPool1d(kernel_size=2, stride=2),  # [bs, 128, 12]
+        )
+        self.mamba = Mamba(
+            d_model=512,
+            d_state=16,
+            d_conv=2, expand=2
+        ).to(device)
+        self.emb_dim = 512
+        self.hidden_dim = 25
+        self.emb = nn.Embedding(vocab_size, self.emb_dim, padding_idx=0)
+        self.encoder_layer = nn.TransformerEncoderLayer(d_model=512, nhead=8)
+        self.transformer_encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=1)
+        self.gru = nn.GRU(self.emb_dim, self.hidden_dim, num_layers=2,
+                          bidirectional=True, dropout=0.4)
+        self.block1 = nn.Sequential(
+            nn.Linear(1536, 1024),
+        )
+        self.classification = nn.Sequential(
+            # nn.Linear(2048, 1024),
+            # nn.BatchNorm1d(1024),
+            # nn.LeakyReLU(),
+            nn.Linear(1024, 640),
+            nn.BatchNorm1d(640),
+            nn.LeakyReLU(),
+            nn.Linear(640, 256),
+            nn.BatchNorm1d(256),
+            nn.LeakyReLU(),
+            nn.Linear(256, 128),
+            nn.BatchNorm1d(128),
+            nn.LeakyReLU(),
+            nn.Linear(128, 64),
+            nn.BatchNorm1d(64),
+            nn.LeakyReLU(),
+            nn.Linear(64, 2)
+        )
+
+    def forward(self, data):
+        oe, aa = data['oe'], data['aa']
+        # [bs, 50, 531] 和 [bs, 50, 531] concat 再通过 1-D 卷积
+        # aa = aa.permute(0, 2, 1)
+        # aa_output = self.convs(aa)  # [bs, 128, 12]
+        # aa_output = aa_output.view(aa_output.size(0), -1)  # [bs, 1536]
+
+        oe_output = self.emb(oe)  # [bs, 50, 512]
+        output = self.transformer_encoder(oe_output).permute(1, 0, 2)  # [50, bs, 512]
+        output, _ = self.gru(output)  # [50, bs, 50]
+        output = output.permute(1, 0, 2)  # [bs, 50, 50]
+        output = torch.cat([output, aa], dim=2).permute(0, 2, 1)  # [bs, 581, 50]
+        aa_output = self.convs(output)  # [bs, 128, 12]
+        aa_output = aa_output.reshape(output.shape[0], -1)  # [bs, 2500]
+
+        return self.block1(aa_output)
+
+    def trainModel(self, data):
+        with torch.no_grad():
+            output = self.forward(data)
+        # output = torch.cat((data['bert'], output), dim=1)
+        return self.classification(output)
+
+
+class MambaTest(torch.nn.Module):
+    def __init__(self, vocab_size=21, d_state=21, d_conv=2, expand=8):
+        super(MambaTest, self).__init__()
+        self.emb_dim = 512
+        self.hidden_dim = 25
+        self.emb = nn.Embedding(vocab_size, self.emb_dim, padding_idx=0)
+        self.encoder = Mamba(
+            d_model=512,
+            d_state=d_state,
+            d_conv=d_conv,
+            expand=expand,
+            use_fast_path=True
+        ).to(device)
+        self.encoder_layer = nn.TransformerEncoderLayer(d_model=512, nhead=8)
+        self.encoder1 = nn.TransformerEncoder(self.encoder_layer, num_layers=1)
+        self.gru = nn.GRU(self.emb_dim, self.hidden_dim, num_layers=2,
+                          bidirectional=True, dropout=0.4)
+        self.classification = nn.Sequential(
+            nn.Linear(2500, 1024),
+            nn.BatchNorm1d(1024),
+            nn.LeakyReLU(),
+            nn.Linear(1024, 640),
+            nn.BatchNorm1d(640),
+            nn.LeakyReLU(),
+            nn.Linear(640, 256),
+            nn.BatchNorm1d(256),
+            nn.LeakyReLU(),
+            nn.Linear(256, 128),
+            nn.BatchNorm1d(128),
+            nn.LeakyReLU(),
+            nn.Linear(128, 64),
+            nn.BatchNorm1d(64),
+            nn.LeakyReLU(),
+            nn.Linear(64, 2)
+        )
+
+    def forward(self, data):
+        oe = data['oe']
+        emb = self.emb(oe)
+        encoding = self.encoder(emb)
+        output, _ = self.gru(encoding)
+        return output.reshape(output.shape[0], -1)
+
+    def trainModel(self, data):
+        return self.classification(self.forward(data))

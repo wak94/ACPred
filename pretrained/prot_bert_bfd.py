@@ -8,16 +8,15 @@ import json
 import torch
 from transformers import BertModel, BertTokenizer
 
-from preprocess.read_data import get_original_data, get_seq_label
+from preprocess.get_data import read_origin_data
 
 if __name__ == '__main__':
     tokenizer = BertTokenizer.from_pretrained('Rostlab/prot_bert_bfd', do_lower_case=False)
     bert = BertModel.from_pretrained("Rostlab/prot_bert_bfd")
 
     dataset = 'Alternate'
-    train_data, test_data = get_original_data(f'AntiACP2.0_{dataset}')
-    train_seq, train_y = get_seq_label(train_data)
-    test_seq, test_y = get_seq_label(test_data)
+
+    train_seq, train_y, test_seq, test_y = read_origin_data(f'AntiACP2.0_{dataset}')
 
     seq = train_seq + test_seq
     # Unsupervised learning
